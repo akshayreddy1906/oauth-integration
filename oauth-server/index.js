@@ -2,15 +2,54 @@ const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
 require("dotenv").config();
+const { setSecureCookie } = require("./services/index.js");
+const cookieParser = require("cookie-parser");
+const { verifyAcessToken } = require("./middleware/index.js");
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors());
-app.get("/", (req, res) => res.send(`<h1>welocme to OAuth API Server</h1>`));
+app.use(cors({ origin: 'http://localhost:3000'}));
+app.use(cookieParser());
+
+app.get("/", (req, res) => {
+  res.send(`<h1>welocme to OAuth API Server</h1>`);
+});
+
 app.get("/auth/github", (req, res) => {
   const githubAuthUrl = `https://github.com/login/oauth/authorize?client_id=${process.env.GITHUB_CLIENT_ID}&scope=user`;
   res.redirect(githubAuthUrl);
+});
+
+app.get("/user/profile/github", verifyAcessToken, async (req, res) => {
+  try {
+    const { accessToken } = req.cookies;
+    const githubUserDataResponse = axios.get("https://api.github.com/user", {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    });
+    res.json({ user: githubUserDataResponse.data });
+  } catch (error) {
+    res.status(500).json({ error: "Could not fetch user Github profile." });
+  }
+});
+
+app.get("/user/profile/google", verifyAcessToken, async (req, res) => {
+  try {
+    const { accessToken } = req.cookies;
+    const googleUserDataResponse = axios.get(
+      "https://www.googleapis.com/oauth/v2/userinfo",
+      {
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+    res.json({ user: googleUserDataResponse.data });
+  } catch (error) {
+    res.status(500).json({ error: "Could not fetch user Google  profile." });
+  }
 });
 app.get("/auth/github/callback", async (req, res) => {
   const code = req.query.code;
@@ -32,8 +71,8 @@ app.get("/auth/github/callback", async (req, res) => {
       }
     );
     const accessToken = tokenResponse.data.access_token;
-    res.cookie("access_token", accessToken);
-    return res.redirect(`${process.env.FRONTEND_URL}/v1/profile/github`);
+    setSecureCookie(res, accessToken);
+    return res.redirect(`${process.env.FRONTEND_URL}/v2/profile/github`);
   } catch (error) {
     res.status(500).json({ error });
   }
@@ -64,8 +103,8 @@ app.get("/auth/google/callback", async (req, res) => {
       }
     );
     const accessToken = tokenResponse.data.access_token;
-    res.cookie("access_token", accessToken);
-    return res.redirect(`${process.env.FRONTEND_URL}/v1/profile/google`);
+    setSecureCookie(res, accessToken);
+    return res.redirect(`${process.env.FRONTEND_URL}/v2/profile/google`);
   } catch (error) {
     console.error(error);
   }
